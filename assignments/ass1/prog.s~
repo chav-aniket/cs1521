@@ -1,0 +1,399 @@
+# COMP1521 19t2 ... Game of Life on a NxN grid
+#
+# Written by z5265106, June 2019
+
+## Requires (from `boardX.s'):
+# - N (word): board dimensions
+# - board (byte[][]): initial board state
+# - newBoard (byte[][]): next board state
+
+    .data
+msg1:   .asciiz "# Iterations: "
+msg2:   .asciiz "=== After iteration "
+msg3:   .asciiz " ===\n"
+eol:    .asciiz "\n"
+period: .asciiz "."
+hash:   .asciiz "#"
+one:    .byte   1
+zero:   .byte   0
+
+## Provides:
+	.globl	main
+	.globl	decideCell
+	.globl	neighbours
+	.globl	copyBackAndShow
+
+
+########################################################################
+# .TEXT <main>
+    .text
+main:
+
+# Frame:	$fp, $ra, $s0, $s1, $s2, $s3, $s4, $s5, $s6, $s7
+# Uses:		$s0, $s1, $s2, $s3, $s4, $s5, $s6, $s7, $t0, $t1
+# Clobbers:	
+
+# Locals:
+#   - 'maxiters' in $s0
+#   - 'n' in $s1 from 'N' in boardX
+#   - 'i' in $s2
+#   - 'j' in $s3
+#   - 'nn' in $s4
+#   - 'board' in $s5
+#   - 'newBoard' in $s6
+#   - iteration_counter in $s7
+
+# Structure:
+#	main
+#	-> [prologue]
+#	-> ...
+#	-> [epilogue]
+
+# Code:
+
+	# Stack Frame Setup
+	sw	$fp, -4($sp)	# push $fp onto stack
+	la	$fp, -4($sp)	# set up $fp for this function
+	sw	$ra, -4($fp)	# save return address
+	sw	$s0, -8($fp)	# save $s0 to use
+	sw	$s1, -12($fp)	# save $s1 to use
+	sw  $s2, -16($fp)	# save $s2 to use
+	sw  $s3, -20($fp)	# save $s3 to use
+	sw  $s4, -24($fp)	# save $s4 to use
+	sw  $s5, -28($fp)	# save $s5 to use
+	sw  $s6, -32($fp)	# save $s6 to use
+	sw  $s7, -36($fp)	# save $s7 to use
+	addi	$sp, $sp, -40
+
+	lw  $s1, N              # n = N (from boardX)
+	li  $s2, 0              # i = 0
+	li  $s3, 0              # j = 0
+	la  $s4, 4              # load 4 bytes of space to nn
+	li  $s7, 0              # iter_counter = 0
+
+	la  $a0, msg1
+	li  $v0, 4
+	syscall                 # printf("%s", msg1);
+
+	li  $v0, 5
+	syscall
+	move $s0, $v0           # scanf("%d", &maxiters);
+
+	loop:
+	    move    $a0, $s2
+	    move    $a1, $s3
+	    jal neighbours
+	    nop
+	    move    $s4, $v0            # nn = neighbours(i, j)
+	    
+	    la  $s5, board
+	    la  $s6, newBoard
+	    
+	    mul $t0, $s1, $s2           # val_ad = N * row #TODO CHECK $S2 AND $S3 CORRECT??
+        add $t0, $t0, $s3           # val_ad = val_ad + col
+        li  $t1, 1
+        mul $t0, $t1, $t0
+        add $t0, $s5, $t0           # val_ad = board + val_ad
+        lb $t0, ($t0)               # val = (val_ad)
+	    
+	    move    $a0, $t0
+	    move    $a1, $s4
+	    jal decideCell
+	    nop
+	    
+	    mul $t2, $s1, $s2           # val_ad = N * row #TODO CHECK $S2 AND $S3 CORRECT??
+        add $t2, $t0, $s3           # val_ad = val_ad + col
+        li  $t1, 1
+        mul $t0, $t1, $t0
+        add $t2, $s6, $t2           # val_ad = newBoard + val_ad
+        lb $t2, ($t2)               # val = (val_ad)
+        
+	    move    $t2, $v0             # newBoard[i][j] = decideCell(val, nn)
+    
+    incr_row:
+        add $s3, $s3, 1
+        beq $s3, $s1, incr_col
+        j loop
+    
+	incr_col:
+        add $s2, $s2, 1
+        li  $s3, 0
+        beq $s2, $s1, incr_iter
+        j loop
+    
+    incr_iter:
+        la  $a0, msg2
+        li  $v0, 4
+        syscall                     # printf("=== After iteration ");
+        
+	    add $s7, $s7, 1
+	    move    $a0, $s7
+	    li  $v0, 1
+	    syscall                     # printf("%d", counter);
+	    
+	    la  $a0, msg3
+        li  $v0, 4
+        syscall                     # printf(" ===\n");
+        
+        jal copyBackAndShow
+        nop
+	    beq $s7, $s0, main_post
+	    
+	    li  $s2, 0
+	    li  $s3, 0
+	    j loop
+
+    main__post:
+        lw  $s7, -36($fp)   # restore $s7 value
+        lw  $s6, -32($fp)   # restore $s6 value
+        lw  $s5, -28($fp)   # restore $s5 value
+        lw  $s4, -24($fp)   # restore $s4 value
+        lw  $s3, -20($fp)   # restore $s3 value
+        lw  $s2, -16($fp)   # restore $s2 value
+        lw	$s1, -12($fp)	# restore $s1 value
+	    lw	$s0, -8($fp)	# restore $s0 value
+	    lw	$ra, -4($fp)	# restore $ra for return
+	    la	$sp, 4($fp)	# restore $sp (remove stack frame)
+	    lw	$fp, ($fp)	# restore $fp (remove stack frame)
+	    jr	$ra		# return
+
+	# Put your other functions here
+    .text
+decideCell:
+# Frame:	$fp, $ra, $s0
+# Uses:		$s0
+# Clobbers:	
+
+# Locals:
+#   - 'ret' in $s0
+
+# Structure:
+#	main
+#	-> [prologue]
+#	-> ...
+#	-> [epilogue]
+    
+#   Stack Frame Setup
+    sw	$fp, -4($sp)	# push $fp onto stack
+	la	$fp, -4($sp)	# set up $fp for this function
+	sw	$ra, -4($fp)	# save return address
+	sw	$s0, -8($fp)	# save $s0 to use
+	addi    $sp, $sp, -12
+	
+	la  $s0, 1      # Allocate 1-byte to ret
+	
+    beq $a0, 1, first_if    # if (old == 1) -> first_if
+	beq $a1, 3, second_if   # if (nn == 3) -> second_if
+    lb  $s0, 1
+    
+	first_if:
+	    blt $a1, 2, first_first_if
+	    beq $a1, 2, first_second_if
+	    beq $a1, 3, first_second_if
+	    lb  $s0, zero
+	    j   exit_decide
+    
+    first_first_if:
+        lb  $s0, zero
+        j   exit_decide
+    
+    first_second_if:
+        lb  $s0, one
+        j   exit_decide
+    
+	second_if:
+	    lb  $s0, one
+	    j   exit_decide
+	
+	exit_decide:
+	    move $v0, $s0   #return ret
+	    
+	    lw	$s0, -8($fp)	# restore $s0 value
+	    lw	$ra, -4($fp)	# restore $ra for return
+	    la	$sp, 4($fp)	# restore $sp (remove stack frame)
+	    lw	$fp, ($fp)	# restore $fp (remove stack frame)
+	    jr	$ra		# return
+
+    .text
+neighbours:
+# Frame:	$fp, $ra, $s0, $s1, $s2
+# Uses:		$s0, $s1, $s2, $t0, $t1, $t2, $t3
+# Clobbers:	
+
+# Locals:
+#   - 'nn' in $s0
+#   - 'x' in $s1
+#   - 'y' in $s2
+
+# Structure:
+#	main
+#	-> [prologue]
+#	-> ...
+#	-> [epilogue]
+
+# Stack Frame Setup
+	sw	$fp, -4($sp)	# push $fp onto stack
+	la	$fp, -4($sp)	# set up $fp for this function
+	sw	$ra, -4($fp)	# save return address
+	sw	$s0, -8($fp)	# save $s0 to use
+	sw	$s1, -12($fp)	# save $s1 to use
+	sw  $s2, -16($fp)	# save $s2 to use
+	sw  $s3, -20($fp)	# save $s3 to use
+	sw  $s4, -24($fp)	# save $s4 to use
+	addi    $sp, $sp, -28
+    
+    la  $s0, 0      # nn = 0
+    la  $s1, -1     # x = -1
+    la  $s2, -1     # y = -1
+    la  $s3, N      # n = N
+    
+    neighbours_check:
+        add $t0, $a0, $s1           # t0 = x + i
+        add $t1, $a1, $s2           # t1 = y + j
+        add $t2, $s3, -1            # t2 = N - 1
+        
+        bltz    $t0, gateOne
+        bltz    $t1, gateTwo
+        beq     $s1, 0, gateThree
+        
+    neighbours_operation:
+        la  $s4, board
+        
+        mul $t4, $s3, $t0           # val_ad = N * (x+i) #TODO CHECK $S2 AND $S3 CORRECT??
+        add $t4, $t4, $t1           # val_ad = val_ad + (y+j)
+        li  $t5, 1                  # int_size = 1
+        mul $t4, $t4, $t5           # val_ad = val_ad * int_size
+        add $t4, $s4, $t4           # val_ad = board + val_ad
+        lb $t4, ($t4)               # val = (val_ad)
+        
+        beq $t4, 1, incr_nn
+        j   inside_for
+        
+    gateOne:
+        bgt $t0, $t2, inside_for
+        j   neighbours_operation
+    
+    gateTwo:
+        bgt $t1, $t2, inside_for
+        j   neighbours_operation
+    
+    gateThree:
+        beq     $s2, 0, inside_for
+        j   neighbours_operation
+    
+    inside_for:
+        add $s2, $s2, 1
+        bgt $s2, 1, outside_for
+        j   neighbours_check
+    
+    outside_for:
+        add $s1, $s1, 1
+        bgt $s1, 1, exit_neighbours
+        li  $s2, 0
+        j   neighbours_check
+    
+    incr_nn:
+        add $s0, $s0, 1             # nn++
+        j   inside_for
+    
+    exit_neighbours:
+        move $v0, $s0
+        
+        lw  $s4, -24($fp)   # restore $s4 value
+        lw  $s3, -20($fp)   # restore $s3 value
+        lw  $s2, -16($fp)   # restore $s2 value
+        lw	$s1, -12($fp)	# restore $s1 value
+	    lw	$s0, -8($fp)	# restore $s0 value
+	    lw	$ra, -4($fp)	# restore $ra for return
+	    la	$sp, 4($fp)	# restore $sp (remove stack frame)
+	    lw	$fp, ($fp)	# restore $fp (remove stack frame)
+	    jr	$ra		# return
+
+    .text
+copyBackAndShow:
+# Frame:	$fp, $ra, $s0, $s1, $s2, $s3, $s4, $s5, $s6, $s7
+# Uses:		$s0, $s1, $s2, $s3, $s4, $s5, $s6, $s7, $t0, $t1
+# Clobbers:	
+
+# Locals:
+#   - 'i' in $s0
+#   - 'j' in $s1
+#   - 'board' in $s2
+#   - 'newBoard' in $s3
+
+
+# Structure:
+#	main
+#	-> [prologue]
+#	-> ...
+#	-> [epilogue]
+
+# Stack Frame Setup
+	sw	$fp, -4($sp)	# push $fp onto stack
+	la	$fp, -4($sp)	# set up $fp for this function
+	sw	$ra, -4($fp)	# save return address
+	sw	$s0, -8($fp)	# save $s0 to use
+	sw	$s1, -12($fp)	# save $s1 to use
+	sw  $s2, -16($fp)	# save $s2 to use
+	sw  $s3, -20($fp)	# save $s3 to use
+	sw  $s4, -24($fp)	# save $s4 to use
+	addi    $sp, $sp, -28
+	
+	li  $s0, 0  # i = 0
+	li  $s1, 0  # j = 0
+	lw  $s2, N  # n = N
+	la  $s3, board
+	la  $s4, newBoard
+
+    copy_check:
+        mul $t0, $s2, $t0           # val_ad = N * i #TODO CHECK $S2 AND $S3 CORRECT??
+        add $t0, $t0, $s1           # val_ad = val_ad + j
+        li  $t1, 1                  # int_size = 1
+        mul $t0, $t0, $t5           # val_ad = val_ad * int_size
+        add $t0, $s3, $t0           # val_ad = board + val_ad
+        lb $t0, ($t0)               # val = (val_ad)
+        
+        mul $t2, $s2, $t2           # val_ad = N * i #TODO CHECK $S2 AND $S3 CORRECT??
+        add $t2, $t2, $s1           # val_ad = val_ad + j
+        li  $t1, 1                  # int_size = 1
+        mul $t2, $t2, $t5           # val_ad = val_ad * int_size
+        add $t2, $s4, $t2           # val_ad = board + val_ad
+        lb $t2, ($t2)               # val = (val_ad)
+        
+        move    $t0, $t2
+        
+        beq $t0, 0, print_dot
+        
+        la  $a0, hash
+        li  $v0, 4
+        syscall
+        j   incr_i
+        
+    print_dot:
+        la  $a0, period
+        li  $v0, 4
+        syscall
+        j   incr_i
+
+    incr_i:
+        add $s0, $s0, 1
+        beq $s0, $s2, incr_j
+        j   copy_check
+
+    incr_j:
+        add $s1, $s1, 1
+        beq $s1, $s2, exit_copy
+        li  $s0, 0
+        j   copy_check
+
+    exit_copy:
+        lw  $s4, -24($fp)   # restore $s4 value
+        lw  $s3, -20($fp)   # restore $s3 value
+        lw  $s2, -16($fp)   # restore $s2 value
+        lw	$s1, -12($fp)	# restore $s1 value
+	    lw	$s0, -8($fp)	# restore $s0 value
+	    lw	$ra, -4($fp)	# restore $ra for return
+	    la	$sp, 4($fp)	# restore $sp (remove stack frame)
+	    lw	$fp, ($fp)	# restore $fp (remove stack frame)
+	    jr	$ra		# return
+
